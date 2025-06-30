@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getFirestore, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
   // TODO: Add SDKs for Firebase products that you want to use
   // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -20,3 +21,41 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
   const db = getFirestore(app);
+  const auth = getAuth(app);
+
+/**
+ * Handles login for buyers.
+ * Fetches input values from the LoginForm, authenticates, checks buyer_id collection,
+ * redirects to buyer-login.html on success, alerts on error.
+ */
+async function loginBuyerFromForm(email, password) {
+  try {
+    // Sign in with Firebase Auth
+    await signInWithEmailAndPassword(auth, email, password);
+
+    // Check if user email exists in buyer_id collection
+    const q = query(collection(db, "seller_id"), where("email", "==", email));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      window.location.href = "seller-login.html";
+    } else {
+      alert("User is not registered as a buyer.");
+    }
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// Add event listener to trigger login on form submit
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('LoginForm');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const email = form.querySelector('input[type="email"], input[name="email"], #email')?.value;
+      const password = form.querySelector('input[type="password"], input[name="password"], #password')?.value;
+      loginBuyerFromForm(email, password);
+    });
+  }
+});
