@@ -25,44 +25,11 @@ import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/fir
 
 /**
  * Handles login for buyers.
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{success: boolean, message: string}>}
+ * Fetches input values from the LoginForm, authenticates, checks buyer_id collection,
+ * redirects to buyer-login.html on success, alerts on error.
  */
-export async function loginBuyer(email, password) {
+async function loginBuyerFromForm(email, password) {
   try {
-    // Sign in with Firebase Auth
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // Check if user email exists in buyer_id collection
-    const q = query(collection(db, "buyer_id"), where("email", "==", email));
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      alert("Login successful and user is a buyer.");
-      return { success: true, message: "Login successful and user is a buyer." };
-    } else {
-      alert("User is not registered as a buyer.");
-      return { success: false, message: "User is not registered as a buyer." };
-    }
-  } catch (error) {
-    alert(error.message);
-    return { success: false, message: error.message };
-  }
-}
-
-/**
- * Handles login for buyers.
- * Fetches input values from the DOM, authenticates, and checks buyer_id collection.
- * @returns {Promise<{success: boolean, message: string}>}
- */
-export async function loginBuyerFromInputs() {
-  try {
-    // Fetch input values from DOM
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-
     // Sign in with Firebase Auth
     await signInWithEmailAndPassword(auth, email, password);
 
@@ -71,17 +38,29 @@ export async function loginBuyerFromInputs() {
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      alert("Login successful and user is a buyer.");
-      return { success: true, message: "Login successful and user is a buyer." };
+      window.location.href = "buyer-login.html";
     } else {
       alert("User is not registered as a buyer.");
-      return { success: false, message: "User is not registered as a buyer." };
     }
   } catch (error) {
     alert(error.message);
-    return { success: false, message: error.message };
   }
 }
-  
+
+// Add event listener to trigger login on form submit
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('LoginForm');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const email = form.querySelector('input[type="email"], input[name="email"], #email')?.value;
+      const password = form.querySelector('input[type="password"], input[name="password"], #password')?.value;
+      loginBuyerFromForm(email, password);
+    });
+  }
+});
+
+
+
 
 
