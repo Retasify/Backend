@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
   // TODO: Add SDKs for Firebase products that you want to use
   // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -20,3 +21,53 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
   const db = getFirestore(app);
+  const auth = getAuth(app);
+
+/**
+ * Checks if password and confirmPassword are the same.
+ * @param {string} password
+ * @param {string} confirmPassword
+ * @returns {boolean}
+ */
+function validatePasswords(password, confirmPassword) {
+  if (password !== confirmPassword) {
+    alert("Passwords do not match.");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Registers a new seller: creates user in Firebase Auth and adds to seller_id collection.
+ * @param {string} email
+ * @param {string} password
+ * @param {string} confirmPassword
+ */
+async function registerSeller(email, password, confirmPassword) {
+  if (!validatePasswords(password, confirmPassword)) {
+    return;
+  }
+  try {
+    await createUserWithEmailAndPassword(auth, email, password);
+    await addDoc(collection(db, "seller_id"), {
+      email: email,
+      role: "seller"
+    });
+    alert("Registration successful!");
+    window.location.href = "loginSeller.html";
+  } catch (error) {
+    alert("Registration failed: " + error.message);
+  }
+}
+
+// Attach event listener to the form with id 'registerForm'
+const registerForm = document.getElementById('registerForm');
+if (registerForm) {
+  registerForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const email = registerForm.elements['email'].value;
+    const password = registerForm.elements['password'].value;
+    const confirmPassword = registerForm.elements['confirmPassword'].value;
+    await registerSeller(email, password, confirmPassword);
+  });
+}
