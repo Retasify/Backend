@@ -104,7 +104,7 @@ async function displayListings() {
                         <p class="text-lg font-bold text-gray-800" style="font-size: 1.15rem;">${listing.rentPrice}</p>
                         <p class="text-gray-500 text-xs" style="font-size: 0.95rem;">/day</p>
                     </div>
-                    <a href="details.html?listingId=${encodeURIComponent(listing.listingId)}"style="display:inline-block; width:auto;">
+                    <a href="details.html?listingId=${encodeURIComponent(listing.listingId)}"style="display:inline-block; width:auto;"
                         class="bg-[#F4B840] text-white px-6 py-2 rounded-full text-base font-medium hover:bg-orange-500 transition-colors"sition-colors"
                         style="background: #F4B840; border-radius: 9999px; font-size: 1.05rem; padding-left: 1.5rem; padding-right: 1.5rem; text-align:center; text-decoration:none; display:inline-block;">
                         Rent Now
