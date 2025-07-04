@@ -48,13 +48,15 @@ async function registerBuyer(email, password, confirmPassword) {
     return;
   }
   try {
-    await createUserWithEmailAndPassword(auth, email, password);
-    await addDoc(collection(db, "buyer_id"), {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = userCredential.user.uid;
+    await addDoc(collection(db, "users"), {
       email: email,
-      role: "buyer"
+      uid: uid,
+      sellerActivated: false
     });
     alert("Registration successful!");
-    window.location.href = "loginBuyer.html";
+    window.location.href = "login.html";
   } catch (error) {
     alert("Registration failed: " + error.message);
   }

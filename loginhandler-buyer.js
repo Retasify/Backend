@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
 import { getFirestore, getDocs, collection, query, where } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
   // TODO: Add SDKs for Firebase products that you want to use
   // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -22,6 +22,10 @@ import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/fir
   const analytics = getAnalytics(app);
   const db = getFirestore(app);
   const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  // Handle Errors here.
+  console.error("Auth persistence error:", error);
+});
 
 /**
  * Handles login for buyers.
@@ -34,11 +38,11 @@ async function loginBuyerFromForm(email, password) {
     await signInWithEmailAndPassword(auth, email, password);
 
     // Check if user email exists in buyer_id collection
-    const q = query(collection(db, "buyer_id"), where("email", "==", email));
+    const q = query(collection(db, "users"), where("email", "==", email));
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      window.location.href = "buyer-login.html";
+      window.location.href = "index.html";
     } else {
       alert("User is not registered as a buyer.");
     }
