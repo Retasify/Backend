@@ -93,14 +93,7 @@ async function populateListingDetails() {
 // Run on DOMContentLoaded
 window.addEventListener("DOMContentLoaded", populateListingDetails);
 
-// Separate event listener for watchlistBtn
-const watchlistBtn = document.getElementById("watchlistBtn");
-if (watchlistBtn) {
-  watchlistBtn.addEventListener("click", function () {
-    // Placeholder: add your watchlist logic here
-    alert("Added to watchlist!");
-  });
-}
+
 
 // Event listener for reviewsBtn to show reviews in listingDescContainer
 const reviewsBtn = document.getElementById("reviewsBtn");
