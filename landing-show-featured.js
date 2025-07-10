@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
-import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getFirestore, collection, getDocs, query, limit } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -26,9 +26,15 @@ async function displayListings() {
     const productGrid = document.getElementById('productGrid');
     if (!productGrid) return;
 
-    const listingsCol = collection(db, "listings");
-    const listingsSnapshot = await getDocs(listingsCol);
+    const listingsRef = collection(db, "listings");
+    const q = query(listingsRef, limit(6));
+    const listingsSnapshot = await getDocs(q);
     let html = "";
+
+    if (listingsSnapshot.empty) {
+        productGrid.innerHTML = '<p class="text-center text-gray-500">No featured listings available at the moment.</p>';
+        return;
+    }
 
     // Use Promise.all to fetch reviews for all listings in parallel
     const listingsWithReviews = await Promise.all(
@@ -80,34 +86,36 @@ async function displayListings() {
 
     listingsWithReviews.forEach(listing => {
         html += `
-        <div class="bg-[#E7E9DE] rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 max-w-sm mx-auto p-3 border border-[#99A57C]" data-aos="fade-up" data-aos-delay="100">
-            <div class="relative">
-                <img src="${listing.itemImage}" alt="${listing.itemName}" class="w-full h-64 object-cover bg-gray-300 rounded-2xl">
+        <div class="flex flex-col h-full bg-[#E7E9DE] rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 w-full border border-[#99A57C]" data-aos="fade-up" data-aos-delay="100">
+            <div class="relative flex-shrink-0">
+                <img src="${listing.itemImage}" alt="${listing.itemName}" class="w-full h-64 object-cover bg-gray-300 rounded-t-2xl">
                 <div class="absolute top-3 left-3 bg-[#F4B840] rounded-full p-2">
                     <i class="fas fa-heart text-white text-xs px-2"></i>
                 </div>
             </div>
-            <div class="p-4">
+            <div class="flex flex-col flex-grow p-4">
                 <div class="flex items-center justify-between mb-1">
-                    <h3 class="text-lg font-semibold text-gray-800">${listing.itemName}</h3>
-                    <div class="flex items-center gap-1">
+                    <h3 class="text-lg font-semibold text-gray-800 truncate">${listing.itemName}</h3>
+                    <div class="flex items-center gap-1 flex-shrink-0 ml-2">
                         <span class="text-[#F4B840] text-sm">★</span>
                         <span class="text-sm font-medium text-gray-800">${listing.avgRating}</span>
                         <span class="text-gray-400 text-sm">(${listing.ratingCount})</span>
                     </div>
                 </div>
-                <p class="text-gray-500 text-sm mb-1">${listing.itemClassification}${listing.itemSize ? `, ${listing.itemSize}` : ""}</p>
-                <p class="text-gray-500 text-sm mb-3">${listing.itemLocation}</p>
-                <hr class="border-black mb-3 mt-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-lg font-bold text-gray-800">${listing.rentPrice}</p>
-                        <p class="text-gray-500 text-xs">/3 days</p>
+                <p class="text-gray-500 text-sm mb-1 truncate">${listing.itemClassification}${listing.itemSize ? `, ${listing.itemSize}` : ""}</p>
+                <p class="text-gray-500 text-sm mb-3 truncate">${listing.itemLocation}</p>
+                <div class="mt-auto">
+                    <hr class="border-black mb-3 mt-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-lg font-bold text-gray-800">${listing.rentPrice}</p>
+                            <p class="text-gray-500 text-xs">/3 days</p>
+                        </div>
+                        <a href="details.html?listingId=${encodeURIComponent(listing.listingId)}" 
+                           class="bg-[#F4B840] text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-[#D1630E] transition-colors whitespace-nowrap">
+                            Rent Now
+                        </a>
                     </div>
-                    <a href="details.html?listingId=${encodeURIComponent(listing.listingId)}" 
-                       class="bg-[#F4B840] text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-[#D1630E] transition-colors">
-                        Rent Now
-                    </a>
                 </div>
             </div>
         </div>
