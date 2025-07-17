@@ -37,11 +37,31 @@ auth.onAuthStateChanged(async (user) => {
     console.log("Email:", user.email);
     console.log("Display Name:", user.displayName);
 
+    // Check if user has seller status and update seller hub link
+    try {
+      const usersCol = collection(db, "users");
+      const { query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js");
+      const q = query(usersCol, where("uid", "==", user.uid), where("sellerActivated", "==", true));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const sellerHubLink = document.querySelector('a[id="sellerHub"]');
+        if (sellerHubLink) {
+          sellerHubLink.innerHTML = '<i class="fas fa-store mr-3 text-gray-400"></i>Go to seller hub';
+          sellerHubLink.href = 'seller-listings.html';
+          console.log('Seller hub link updated for activated seller');
+        }
+      } else {
+        console.log('User is not an activated seller');
+      }
+    } catch (error) {
+      console.error('Error checking seller status:', error);
+    }
+
     // Optimize: Query only the user document with matching uid instead of fetching all users
     let firstName = "";
     try {
       const usersCol = collection(db, "users");
-      // Use a query to fetch only the user with matching uid
       const { query, where, getDocs } = await import("https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js");
       const q = query(usersCol, where("uid", "==", user.uid));
       const querySnapshot = await getDocs(q);
@@ -129,7 +149,7 @@ auth.onAuthStateChanged(async (user) => {
       const bellBtn = document.getElementById("notif-bell");
       if (bellBtn) {
         bellBtn.addEventListener("click", () => {
-          window.location.href = "notifications.html"; // Change to your desired page
+          window.location.href = "notification.html"; // Change to your desired page
         });
       }
     }
