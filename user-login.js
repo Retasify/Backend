@@ -48,7 +48,7 @@ auth.onAuthStateChanged(async (user) => {
         const sellerHubLink = document.querySelector('a[id="sellerHub"]');
         if (sellerHubLink) {
           sellerHubLink.innerHTML = '<i class="fas fa-store mr-3 text-gray-400"></i>Go to seller hub';
-          sellerHubLink.href = 'seller-listings.html';
+          sellerHubLink.href = 'seller-hub.html';
           console.log('Seller hub link updated for activated seller');
         }
       } else {
