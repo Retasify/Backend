@@ -48,6 +48,14 @@ onAuthStateChanged(auth, async (user) => {
   console.log('Persisted user session found:');
   console.log('UID:', user.uid);
   
+  // Show initial loader for active listings
+  showLoader('activeListingsLoader');
+  hideElement('listingsTable');
+  hideElement('activeCount');
+  
+  // Add skeleton loading to table
+  addSkeletonRows('activeListings', 3);
+  
   /****************************************************************************
    * USER DOCUMENT VALIDATION
    * 
@@ -69,7 +77,15 @@ onAuthStateChanged(auth, async (user) => {
     
     // Get the user document ID
     const userDocId = userSnapshot.docs[0].id;
+    const userDoc = userSnapshot.docs[0].data();
     console.log('Found user document ID:', userDocId);
+    
+    // Update user name in header
+    const userNameElement = document.getElementById('userName');
+    if (userNameElement && userDoc) {
+      const displayName = userDoc.firstName || userDoc.name || userDoc.email || 'User';
+      userNameElement.textContent = displayName;
+    }
     
     /**************************************************************************
      * LISTINGS DATA FETCHING
@@ -112,12 +128,19 @@ onAuthStateChanged(auth, async (user) => {
       console.log('Updated active count display with:', activeSnapshot.size);
     }
     
+    // Show active count section
+    showElement('activeCount');
+    
     // Update pagination info
     const resultsInfo = document.getElementById('resultsInfo');
     if (resultsInfo) {
       resultsInfo.textContent = `Showing ${Math.min(activeSnapshot.size, 10)} of ${activeSnapshot.size} results`;
       console.log('Updated pagination info');
     }
+    
+    // Hide loader and show table
+    hideLoader('activeListingsLoader');
+    showElement('listingsTable');
     
     // Get table body element
     const tableBody = document.getElementById('activeListings');
@@ -199,6 +222,143 @@ onAuthStateChanged(auth, async (user) => {
     const inactiveContainer = document.getElementById('inactiveListings');
     const inactiveResultsInfo = document.getElementById('inactiveResultsInfo');
     
+    // Note: Inactive listings are loaded when tab is clicked
+    // See tab switching logic at the bottom of this file
+    // Note: Inactive listings are loaded when tab is clicked
+    // See tab switching logic at the bottom of this file
+    
+    // Store references for later use
+    window.listingsRef = listingsRef;
+    window.inactiveQuery = inactiveQuery;
+    
+  } catch (error) {
+    console.error("Error loading listings:", error);
+    hideLoader('activeListingsLoader');
+    showElement('listingsTable');
+  }
+});
+
+/******************************************************************************
+ * LOADER UTILITY FUNCTIONS
+ * 
+ * These functions handle showing and hiding loaders throughout the app
+ ******************************************************************************/
+
+function showLoader(loaderId) {
+  const loader = document.getElementById(loaderId);
+  if (loader) {
+    loader.style.display = 'flex';
+  }
+}
+
+function hideLoader(loaderId) {
+  const loader = document.getElementById(loaderId);
+  if (loader) {
+    loader.style.display = 'none';
+  }
+}
+
+function showElement(elementId) {
+  const element = document.getElementById(elementId);
+  if (element) {
+    element.style.display = 'block';
+    element.classList.remove('hidden');
+  }
+}
+
+function hideElement(elementId) {
+  const element = document.getElementById(elementId);
+  if (element) {
+    element.style.display = 'none';
+    element.classList.add('hidden');
+  }
+}
+
+function showGlobalLoader(message = 'Loading...') {
+  const loader = document.getElementById('globalLoader');
+  if (loader) {
+    const messageSpan = loader.querySelector('span');
+    if (messageSpan) {
+      messageSpan.textContent = message;
+    }
+    loader.classList.remove('hidden');
+    loader.style.display = 'flex';
+  }
+}
+
+function hideGlobalLoader() {
+  const loader = document.getElementById('globalLoader');
+  if (loader) {
+    loader.classList.add('hidden');
+    loader.style.display = 'none';
+  }
+}
+
+/******************************************************************************
+ * SKELETON LOADING FUNCTIONS
+ * 
+ * These functions create skeleton loading placeholders for better UX
+ ******************************************************************************/
+
+function addSkeletonRows(tableBodyId, count = 3) {
+  const tableBody = document.getElementById(tableBodyId);
+  if (!tableBody) return;
+  
+  tableBody.innerHTML = '';
+  
+  for (let i = 0; i < count; i++) {
+    const row = document.createElement('tr');
+    row.className = 'border-b animate-pulse';
+    row.innerHTML = `
+      <td class="p-4">
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 bg-gray-300 rounded-lg"></div>
+          <div>
+            <div class="h-4 bg-gray-300 rounded w-32 mb-2"></div>
+            <div class="h-3 bg-gray-300 rounded w-24"></div>
+          </div>
+        </div>
+      </td>
+      <td class="p-4">
+        <div class="h-4 bg-gray-300 rounded w-24"></div>
+      </td>
+      <td class="p-4">
+        <div class="h-4 bg-gray-300 rounded w-16"></div>
+      </td>
+      <td class="p-4">
+        <div class="flex gap-2">
+          <div class="h-8 bg-gray-300 rounded w-16"></div>
+          <div class="h-8 bg-gray-300 rounded w-20"></div>
+        </div>
+      </td>
+    `;
+    tableBody.appendChild(row);
+  }
+}
+
+/******************************************************************************
+ * LOAD INACTIVE LISTINGS
+ * 
+ * Separate function to load inactive listings when the tab is clicked
+ ******************************************************************************/
+
+async function loadInactiveListings() {
+  if (!window.listingsRef) return;
+  
+  showLoader('inactiveListingsLoader');
+  hideElement('inactiveListingsTable');
+  
+  // Add skeleton loading
+  addSkeletonRows('inactiveListings', 2);
+  
+  try {
+    const inactiveQuery = query(window.listingsRef, where("status", "==", "inactive"));
+    const inactiveSnapshot = await getDocs(inactiveQuery);
+    console.log(`Found ${inactiveSnapshot.size} inactive listings`);
+    
+    const inactiveContainer = document.getElementById('inactiveListings');
+    const inactiveResultsInfo = document.getElementById('inactiveResultsInfo');
+    
     if (inactiveContainer) {
       inactiveContainer.innerHTML = '';
       
@@ -269,10 +429,97 @@ onAuthStateChanged(auth, async (user) => {
         inactiveContainer.appendChild(emptyRow);
       }
     }
+    
+    hideLoader('inactiveListingsLoader');
+    showElement('inactiveListingsTable');
+    
   } catch (error) {
-    console.error("Error loading listings:", error);
+    console.error("Error loading inactive listings:", error);
+    hideLoader('inactiveListingsLoader');
+    showElement('inactiveListingsTable');
   }
-});
+}
+
+/******************************************************************************
+ * LOAD ACTIVE ORDERS
+ * 
+ * Function to load active orders when the orders section is accessed
+ ******************************************************************************/
+
+async function loadActiveOrders() {
+  showLoader('activeOrdersLoader');
+  hideElement('activeOrdersTable');
+  
+  try {
+    // Simulate loading time for demonstration
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // TODO: Replace with actual orders fetching logic
+    console.log('Loading active orders...');
+    
+    hideLoader('activeOrdersLoader');
+    showElement('activeOrdersTable');
+    
+  } catch (error) {
+    console.error("Error loading active orders:", error);
+    hideLoader('activeOrdersLoader');
+    showElement('activeOrdersTable');
+  }
+}
+
+/******************************************************************************
+ * LOAD PENDING ORDERS
+ * 
+ * Function to load pending orders when the pending tab is clicked
+ ******************************************************************************/
+
+async function loadPendingOrders() {
+  showLoader('pendingOrdersLoader');
+  hideElement('pendingOrdersTable');
+  
+  try {
+    // Simulate loading time for demonstration
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    // TODO: Replace with actual pending orders fetching logic
+    console.log('Loading pending orders...');
+    
+    hideLoader('pendingOrdersLoader');
+    showElement('pendingOrdersTable');
+    
+  } catch (error) {
+    console.error("Error loading pending orders:", error);
+    hideLoader('pendingOrdersLoader');
+    showElement('pendingOrdersTable');
+  }
+}
+
+/******************************************************************************
+ * LOAD CANCELLED ORDERS
+ * 
+ * Function to load cancelled orders when the cancellations tab is clicked
+ ******************************************************************************/
+
+async function loadCancelledOrders() {
+  showLoader('cancelledOrdersLoader');
+  hideElement('cancelledOrdersTable');
+  
+  try {
+    // Simulate loading time for demonstration
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // TODO: Replace with actual cancelled orders fetching logic
+    console.log('Loading cancelled orders...');
+    
+    hideLoader('cancelledOrdersLoader');
+    showElement('cancelledOrdersTable');
+    
+  } catch (error) {
+    console.error("Error loading cancelled orders:", error);
+    hideLoader('cancelledOrdersLoader');
+    showElement('cancelledOrdersTable');
+  }
+}
 
 /*******************************************************************
  * CREATE LISTING
@@ -287,6 +534,10 @@ onAuthStateChanged(auth, async (user) => {
 async function handleCreateListing(e) {
   e.preventDefault();
   
+  // Show loader and hide form
+  showLoader('createListingLoader');
+  hideElement('listingForm');
+  
   try {
     const user = auth.currentUser;
     if (!user) {
@@ -297,7 +548,11 @@ async function handleCreateListing(e) {
     // Get user document reference
     const usersQuery = query(collection(db, "users"), where("uid", "==", user.uid));
     const userSnapshot = await getDocs(usersQuery);
-    if (userSnapshot.empty) return;
+    if (userSnapshot.empty) {
+      hideLoader('createListingLoader');
+      showElement('listingForm');
+      return;
+    }
     
     const userDocId = userSnapshot.docs[0].id;
     const listingsRef = collection(db, "users", userDocId, "listings");
@@ -331,7 +586,7 @@ async function handleCreateListing(e) {
     const photoUploads = [];
     for (let i = 1; i <= 4; i++) {
       const fileInput = document.getElementById(`photoUpload${i}`);
-      if (fileInput.files[0]) {
+      if (fileInput && fileInput.files[0]) {
         const file = fileInput.files[0];
         const fileRef = ref(storageRef, `photo_${i}_${file.name}`);
         const uploadTask = await uploadBytes(fileRef, file);
@@ -348,18 +603,32 @@ async function handleCreateListing(e) {
     const docRef = await addDoc(listingsRef, listingData);
     console.log("Listing created with ID: ", docRef.id);
     
-    // Close modal and refresh listings
+    // Hide loader, show form, and close modal
+    hideLoader('createListingLoader');
+    showElement('listingForm');
     document.getElementById('createListing').style.display = 'none';
+    
+    // Refresh listings
     window.location.reload();
     
   } catch (error) {
     console.error("Error creating listing:", error);
+    // Hide loader and show form again
+    hideLoader('createListingLoader');
+    showElement('listingForm');
     // TODO: Show error message to user
+    alert('Error creating listing. Please try again.');
   }
 }
 
 // Add event listener for form submission
 document.getElementById('listingForm')?.addEventListener('submit', handleCreateListing);
+
+// Make functions globally available
+window.loadInactiveListings = loadInactiveListings;
+window.loadActiveOrders = loadActiveOrders;
+window.loadPendingOrders = loadPendingOrders;
+window.loadCancelledOrders = loadCancelledOrders;
 
 function formatDate(date) {
   return date.toLocaleDateString('en-US', { 
