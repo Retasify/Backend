@@ -169,8 +169,8 @@ onAuthStateChanged(auth, async (user) => {
           row.innerHTML = `
             <td class="p-4">
               <div class="flex items-center gap-4">
-                <div class="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                  <i class="fas fa-image text-gray-400"></i>
+                <div class="w-16 h-16 rounded-lg overflow-hidden">
+                  <img src="${listing.images[0] || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZmlsbD0iI2YwMDAwMCIgZD0iTTEyIDEyIi8+PC9zdmc+'}" alt="Listing" class="w-full h-full object-cover">
                 </div>
                 <div>
                   <p class="font-semibold text-gray-800">${listing.title || 'No Title'}</p>
@@ -186,7 +186,7 @@ onAuthStateChanged(auth, async (user) => {
                 <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
                   Edit
                 </button>
-                <button class="bg-red-100 text-red-600 px-4 py-2 rounded-lg hover:bg-red-200 transition-colors">
+                <button class="bg-red-100 text-red-600 px-4 py-2 rounded-lg hover:bg-red-200 transition-colors" id="deactivateBtn-${doc.id}" data-listing-id="${doc.id}" data-doc-ref="${JSON.stringify(doc.ref)}">
                   Deactivate
                 </button>
               </div>
@@ -194,6 +194,35 @@ onAuthStateChanged(auth, async (user) => {
           `;
           
           tableBody.appendChild(row);
+          
+          // Add deactivation handler for this specific listing
+          const deactivateBtn = document.getElementById(`deactivateBtn-${doc.id}`);
+          if (deactivateBtn) {
+            deactivateBtn.addEventListener('click', async (e) => {
+              try {
+                // Prevent default button behavior
+                e.preventDefault();
+                
+                // Get the listings collection reference
+                const listingsRef = collection(db, "users", userDocId, "listings");
+                
+                // Update the listing status to inactive
+                await updateDoc(listingsRef.doc(e.target.dataset.listingId), {
+                  status: "inactive",
+                  updatedAt: new Date()
+                });
+                
+                // Show success message
+                alert('Listing has been deactivated successfully');
+                
+                // Refresh the listings display
+                window.location.reload();
+              } catch (error) {
+                console.error("Error deactivating listing:", error);
+                // TODO: Show error message to user
+              }
+            });
+          }
         });
       } else {
         // Show message if no active listings found
@@ -525,6 +554,7 @@ async function loadCancelledOrders() {
  * CREATE LISTING
  * 
  * Handles the creation of a new listing
+ * - Handles Preview for image uploads
  * - Validates form inputs
  * - Collects all listing data from the form
  * - Creates a new document in the user's listings subcollection
@@ -563,7 +593,7 @@ async function handleCreateListing(e) {
       title: title,
       subtitle: document.getElementById('listingSubtitle').value,
       category: document.getElementById('listingCategory').value,
-      condition: document.getElementById('listingCondition').value,
+      itemGender: document.getElementById('itemGender').value,
       size: document.getElementById('listingSize').value,
       bust: document.getElementById('listingBust').value,
       waist: document.getElementById('listingWaist').value,
@@ -620,6 +650,45 @@ async function handleCreateListing(e) {
     alert('Error creating listing. Please try again.');
   }
 }
+
+// Function to handle file selection and preview
+function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const container = e.target.closest('.photo-upload-container');
+        const previewContainer = container.querySelector('.preview-container');
+        const previewImg = container.querySelector('.preview-image');
+        const removeBtn = container.querySelector('.remove-preview');
+        
+        // Show preview
+        previewContainer.classList.remove('hidden');
+        container.querySelector('.text-center').classList.add('hidden');
+        
+        // Create object URL for preview
+        const objectUrl = URL.createObjectURL(file);
+        previewImg.src = objectUrl;
+        
+        // Clean up object URL when page is unloaded
+        window.addEventListener('unload', () => URL.revokeObjectURL(objectUrl));
+    }
+}
+
+// Add click handlers for photo upload buttons and file change handlers
+document.querySelectorAll('.photo-upload-container').forEach(container => {
+    const fileInput = container.querySelector('input[type="file"]');
+    if (fileInput) {
+        container.addEventListener('click', (e) => {
+            fileInput.click();
+        });
+        fileInput.addEventListener('change', handleFileSelect);
+    }
+});
+
+// Add close button functionality
+document.getElementById('closeCreateListing')?.addEventListener('click', (e) => {
+    e.preventDefault(); // Prevent any form submission
+    document.getElementById('createListing').style.display = 'none';
+});
 
 // Add event listener for form submission
 document.getElementById('listingForm')?.addEventListener('submit', handleCreateListing);
