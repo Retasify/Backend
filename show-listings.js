@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
-import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getFirestore, collection, getDocs, doc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -26,30 +26,55 @@ async function displayListings() {
     const productGrid = document.getElementById('productGrid');
     if (!productGrid) return;
 
-    const listingsCol = collection(db, "listings");
-    const listingsSnapshot = await getDocs(listingsCol);
+    // Get all users with listings subcollections
+    const usersCol = collection(db, "users");
+    const usersSnapshot = await getDocs(usersCol);
+
+    // Initialize empty array to store all listings
+    let allListings = [];
+
+    // For each user, get their listings
+    for (const userDoc of usersSnapshot.docs) {
+        try {
+            const listingsRef = collection(db, "users", userDoc.id, "listings");
+            const listingsSnapshot = await getDocs(listingsRef);
+            
+            // Add listings to our array
+            listingsSnapshot.forEach(listingDoc => {
+                const listingData = listingDoc.data();
+                // Add user ID to listing data for reference
+                listingData.userId = userDoc.id;
+                allListings.push({
+                    id: listingDoc.id,
+                    ...listingData
+                });
+            });
+        } catch (error) {
+            console.error(`Error fetching listings for user ${userDoc.id}:`, error);
+        }
+    }
     let html = "";
 
     // Use Promise.all to fetch reviews for all listings in parallel
     const listingsWithReviews = await Promise.all(
-        listingsSnapshot.docs.map(async doc => {
-            const data = doc.data();
+        allListings.map(async listing => {
             // Fallbacks for missing data
-            const itemName = data.itemName || "Untitled";
-            const itemLocation = data.itemLocation || "";
-            // Use first image if itemImage is an array, else fallback
-            const itemImage = Array.isArray(data.itemImage) && data.itemImage.length > 0
-                ? data.itemImage[0]
+            const itemName = listing.title || "Untitled";
+            const itemLocation = listing.landmark || "";
+            // Use first image from images array if available, fallback to placeholder
+            const itemImage = Array.isArray(listing.images) && listing.images.length > 0
+                ? listing.images[0]
                 : "./images/Placeholder_img.png";
-            const itemSize = data.itemSize || "";
-            const itemClassification = data.itemClassification || "";
-            const rentPrice = data.rentPrice ? `Php ${data.rentPrice}` : "Php 1,200";
-            const itemGender = data.itemGender || "Unspecified";
-            const listingId = doc.id;
+            const itemSize = listing.size || "";
+            const itemClassification = listing.category || "";
+            const rentPrice = listing.price ? `Php ${listing.price}` : "Php 1,200";
+            
+            const listingId = listing.id;
             
 
             // Query reviews subcollection inside each listing document
-            const reviewsCol = collection(db, "listings", doc.id, "reviews");
+            // Note: We need to use the userId from the listing data to find the correct reviews collection
+            const reviewsCol = collection(db, "users", listing.userId, "listings", listingId, "reviews");
             const reviewsSnapshot = await getDocs(reviewsCol);
             let totalRating = 0;
             let reviewCount = 0;
@@ -72,7 +97,6 @@ async function displayListings() {
                 rentPrice,
                 avgRating,
                 ratingCount,
-                itemGender,
                 listingId
             };
         })

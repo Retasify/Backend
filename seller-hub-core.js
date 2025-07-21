@@ -242,19 +242,85 @@ onAuthStateChanged(auth, async (user) => {
      * - Handles empty state if no inactive listings found
      **************************************************************************/
     
-    // Get inactive listings
-    const inactiveQuery = query(listingsRef, where("status", "==", "inactive"));
-    const inactiveSnapshot = await getDocs(inactiveQuery);
-    console.log(`Found ${inactiveSnapshot.size} inactive listings`);
+    // Initialize tab switching
+    const activeTab = document.getElementById('activeTab');
+    const inactiveTab = document.getElementById('inactiveTab');
+    const activeContent = document.getElementById('listingsTable');
+    const inactiveContent = document.getElementById('inactiveContent');
     
-    // Display inactive listings
-    const inactiveContainer = document.getElementById('inactiveListings');
-    const inactiveResultsInfo = document.getElementById('inactiveResultsInfo');
+    // Function to switch to active listings
+    function showActiveListings() {
+        // Update tab styles
+        activeTab.classList.add('border-b-2', 'border-[#F4B840]', 'text-[#F4B840]', 'font-semibold');
+        activeTab.classList.remove('text-gray-600');
+        inactiveTab.classList.remove('border-b-2', 'border-[#F4B840]', 'text-[#F4B840]', 'font-semibold');
+        inactiveTab.classList.add('text-gray-600');
+        
+        // Show/hide content
+        if (activeContent) {
+            activeContent.style.display = 'block';
+            // Show active count
+            const activeCountDisplay = document.getElementById('activeCountDisplay');
+            if (activeCountDisplay) {
+                activeCountDisplay.textContent = `Total Active (${activeSnapshot.size})`;
+                activeCountDisplay.parentElement.style.display = 'block';
+            }
+        }
+        if (inactiveContent) inactiveContent.classList.add('hidden');
+        
+        // Load active listings if needed
+        if (typeof loadActiveListings === 'function') {
+            loadActiveListings();
+        }
+    }
     
-    // Note: Inactive listings are loaded when tab is clicked
-    // See tab switching logic at the bottom of this file
-    // Note: Inactive listings are loaded when tab is clicked
-    // See tab switching logic at the bottom of this file
+    // Function to switch to inactive listings
+    async function showInactiveListings() {
+        // Update tab styles
+        inactiveTab.classList.add('border-b-2', 'border-[#F4B840]', 'text-[#F4B840]', 'font-semibold');
+        inactiveTab.classList.remove('text-gray-600');
+        activeTab.classList.remove('border-b-2', 'border-[#F4B840]', 'text-[#F4B840]', 'font-semibold');
+        activeTab.classList.add('text-gray-600');
+        
+        // Show/hide content
+        if (activeContent) {
+            activeContent.style.display = 'none';
+            // Hide active count
+            const activeCount = document.getElementById('activeCount');
+            if (activeCount) activeCount.style.display = 'none';
+        }
+        if (inactiveContent) {
+            inactiveContent.classList.remove('hidden');
+            // Show inactive count
+            const inactiveCountDisplay = document.getElementById('inactiveCountDisplay');
+            if (inactiveCountDisplay) {
+                // Get inactive listings count
+                try {
+                    const inactiveQuery = query(listingsRef, where("status", "==", "inactive"));
+                    const inactiveSnapshot = await getDocs(inactiveQuery);
+                    inactiveCountDisplay.textContent = `Total Inactive (${inactiveSnapshot.size})`;
+                    inactiveCountDisplay.parentElement.style.display = 'block';
+                } catch (error) {
+                    console.error('Error fetching inactive listings count:', error);
+                    inactiveCountDisplay.textContent = 'Error loading inactive count';
+                }
+            }
+        }
+        
+        // Load inactive listings if needed
+        if (typeof loadInactiveListings === 'function') {
+            loadInactiveListings();
+        }
+    }
+    
+    // Set up tab click handlers
+    if (activeTab && inactiveTab) {
+        activeTab.addEventListener('click', showActiveListings);
+        inactiveTab.addEventListener('click', showInactiveListings);
+        
+        // Initialize with active listings
+        showActiveListings();
+    }
     
     // Store references for later use
     window.listingsRef = listingsRef;
