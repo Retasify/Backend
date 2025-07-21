@@ -30,70 +30,215 @@ function getQueryParam(param) {
 // Populate listing details
 async function populateListingDetails() {
   const listingId = getQueryParam("listingId");
-  if (!listingId) return;
-
-  const docRef = doc(db, "listings", listingId);
-  const docSnap = await getDoc(docRef);
-
-  if (!docSnap.exists()) return;
-  const data = docSnap.data();
-
-  // Set main image (first in array or fallback)
-  const mainImageElem = document.getElementById("mainImage");
-  if (mainImageElem) {
-    let imgSrc = Array.isArray(data.itemImage) && data.itemImage.length > 0
-      ? data.itemImage[0]
-      : "./images/Placeholder_img.png";
-    mainImageElem.src = imgSrc;
+  
+  if (!listingId) {
+    console.error("Missing listingId in URL parameters");
+    return;
   }
 
-  // Inject thumbnails (index 0 to 3) into thumbnailContainer
+  try {
+    // Get all users
+    const usersRef = collection(db, "users");
+    const usersSnapshot = await getDocs(usersRef);
+    
+    let foundListing = null;
+    let foundUserId = null;
+    
+    // Search through each user's listings subcollection
+    for (const userDoc of usersSnapshot.docs) {
+      const listingRef = doc(db, "users", userDoc.id, "listings", listingId);
+      const listingDoc = await getDoc(listingRef);
+      
+      if (listingDoc.exists()) {
+        const listingData = listingDoc.data();
+        console.log("Found listing data:", listingData);
+        console.log("Image array:", listingData.image);
+        foundListing = { id: listingDoc.id, ...listingData };
+        foundUserId = userDoc.id;
+        break;
+      }
+    }
+    
+    if (!foundListing) {
+      console.error("No listing found with the provided ID in any user's collection");
+      return;
+    }
+
+    // Update the URL to include the userId for future references
+    if (foundUserId && !getQueryParam("userId")) {
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.set('userId', foundUserId);
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    // Set main image (first in array or fallback)
+    const mainImageElem = document.getElementById("mainImage");
+    if (mainImageElem) {
+      // Debug log the image data we're working with
+      console.log("Setting main image from:", foundListing.image);
+      
+      // Ensure we're working with an array and it has items
+      const images = Array.isArray(foundListing.images) ? foundListing.images : [];
+      console.log("Processed images array:", images);
+      
+      // Set the image source or fallback
+      const imgSrc = images.length > 0 ? images[0] : "./images/Placeholder_img.png";
+      console.log("Setting image source to:", imgSrc);
+      
+      mainImageElem.src = imgSrc;
+    }
+    
+    // Update the rest of the UI with the found listing data
+    updateListingUI(foundListing);
+    
+  } catch (error) {
+    console.error("Error fetching listing:", error);
+  }
+}
+
+// Update the rest of the UI with the found listing data
+function updateListingUI(data) {
   const thumbnailContainer = document.getElementById("thumbnailContainer");
-  if (thumbnailContainer && Array.isArray(data.itemImage)) {
+  const mainImageElem = document.getElementById("mainImage");
+  
+  // Clear any existing thumbnails
+  if (thumbnailContainer) {
+    thumbnailContainer.innerHTML = '';
+    
+    // Get the first 4 images (or fewer if there aren't 4)
+    const images = Array.isArray(data.images) ? data.images.slice(0, 4) : [];
+    
+    // Create thumbnail for each image
+    images.forEach((imgSrc, index) => {
+      if (!imgSrc) return; // Skip empty image entries
+      
+      const thumbWrapper = document.createElement('div');
+      thumbWrapper.className = 'thumbnail-wrapper relative inline-block mr-2 mb-2';
+      thumbWrapper.style.width = '90px';
+      thumbWrapper.style.height = '100px';
+      thumbWrapper.style.borderRadius = '8px';
+      thumbWrapper.style.overflow = 'hidden';
+      thumbWrapper.style.cursor = 'pointer';
+      thumbWrapper.style.border = '2px solid transparent';
+      thumbWrapper.style.transition = 'all 0.2s ease';
+      
+      // Highlight first thumbnail by default
+      if (index === 0) {
+        thumbWrapper.style.borderColor = '#F4B840';
+      }
+      
+      const thumbImg = document.createElement('img');
+      thumbImg.src = imgSrc;
+      thumbImg.alt = `Thumbnail ${index + 1}`;
+      thumbImg.className = 'w-full h-full object-cover';
+      thumbImg.loading = 'lazy';
+      
+      // Add hover effect
+      thumbWrapper.addEventListener('mouseenter', () => {
+        thumbWrapper.style.transform = 'scale(1.05)';
+        thumbWrapper.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+      });
+      
+      thumbWrapper.addEventListener('mouseleave', () => {
+        thumbWrapper.style.transform = 'scale(1)';
+        thumbWrapper.style.boxShadow = 'none';
+      });
+      
+      // Update main image on click
+      thumbWrapper.addEventListener('click', () => {
+        if (mainImageElem) {
+          mainImageElem.src = imgSrc;
+          // Update active thumbnail
+          document.querySelectorAll('.thumbnail-wrapper').forEach(thumb => {
+            thumb.style.borderColor = 'transparent';
+          });
+          thumbWrapper.style.borderColor = '#F4B840';
+        }
+      });
+      
+      thumbWrapper.appendChild(thumbImg);
+      thumbnailContainer.appendChild(thumbWrapper);
+    });
+    
+    // If no thumbnails, show a message
+    if (images.length === 0) {
+      const noImagesMsg = document.createElement('div');
+      noImagesMsg.className = 'text-gray-500 text-sm';
+      noImagesMsg.textContent = 'No images available';
+      thumbnailContainer.appendChild(noImagesMsg);
+    }
+  }
+  
+  if (thumbnailContainer && Array.isArray(data.image)) {
     thumbnailContainer.innerHTML = ""; // Clear previous thumbnails
-    data.itemImage.slice(0, 4).forEach((img, idx) => {
+    
+    // Add thumbnails for each image
+    data.image.slice(0, 4).forEach((img, idx) => {
+      if (!img) return; // Skip empty image entries
+      
       const thumb = document.createElement("img");
-      thumb.src = img || "./images/Placeholder_img.png";
+      thumb.src = img;
       thumb.alt = `Thumbnail ${idx + 1}`;
-      thumb.className = "thumbnail-img"; // Add your CSS class if needed
+      thumb.className = "thumbnail-img cursor-pointer";
       thumb.style.width = "160px";
       thumb.style.height = "160px";
       thumb.style.objectFit = "cover";
       thumb.style.borderRadius = "14px";
       thumb.style.marginRight = "14px";
-      // Optional: clicking thumbnail sets main image
-      thumb.addEventListener("click", () => {
-        if (mainImageElem) mainImageElem.src = thumb.src;
+      thumb.style.transition = "opacity 0.2s";
+      
+      // Add hover effect
+      thumb.addEventListener("mouseenter", () => {
+        thumb.style.opacity = "0.8";
       });
+      thumb.addEventListener("mouseleave", () => {
+        thumb.style.opacity = "1";
+      });
+      
+      // Click to set as main image
+      thumb.addEventListener("click", () => {
+        if (mainImageElem) {
+          mainImageElem.src = img;
+          // Update active thumbnail
+          document.querySelectorAll('.thumbnail-img').forEach(t => 
+            t.classList.remove('ring-2', 'ring-[#F4B840]')
+          );
+          thumb.classList.add('ring-2', 'ring-[#F4B840]');
+        }
+      });
+      
+      // Highlight first thumbnail by default
+      if (idx === 0) {
+        thumb.classList.add('ring-2', 'ring-[#F4B840]');
+      }
+      
       thumbnailContainer.appendChild(thumb);
     });
   }
 
   // Set text fields
   if (document.getElementById("listingTitle"))
-    document.getElementById("listingTitle").textContent = data.itemName || "";
+    document.getElementById("listingTitle").textContent = data.title || "";
   if (document.getElementById("listingTeaser"))
-    document.getElementById("listingTeaser").textContent = data.itemTeaser || "";
+    document.getElementById("listingTeaser").textContent = data.subtitle || "";
   if (document.getElementById("listingDesc"))
-    document.getElementById("listingDesc").textContent = data.itemDescription || "";
+    document.getElementById("listingDesc").textContent = data.description || "";
   if (document.getElementById("sellerName"))
     document.getElementById("sellerName").textContent = data.sellerName || "";
   if (document.getElementById("sellerLoc"))
-    document.getElementById("sellerLoc").textContent = data.itemLocation || "";
+    document.getElementById("sellerLoc").textContent = data.landmark || "";
   if (document.getElementById("itemClass"))
-    document.getElementById("itemClass").textContent = data.itemClassification || "";
+    document.getElementById("itemClass").textContent = data.category || "";
   if (document.getElementById("itemSize"))
-    document.getElementById("itemSize").textContent = data.itemSize || "";
+    document.getElementById("itemSize").textContent = data.size || "";
   if (document.getElementById("pickupArea"))
-    document.getElementById("pickupArea").textContent = data.pickupArea || "";
+    document.getElementById("pickupArea").textContent = data.landmark || "";
   if (document.getElementById("finalPrice"))
-    document.getElementById("finalPrice").textContent = data.rentPrice ? `Php ${data.rentPrice}` : "";
+    document.getElementById("finalPrice").textContent = data.price ? `Php ${data.price}` : "";
 }
 
 // Run on DOMContentLoaded
 window.addEventListener("DOMContentLoaded", populateListingDetails);
-
-
 
 // Event listener for reviewsBtn to show reviews in listingDescContainer
 const reviewsBtn = document.getElementById("reviewsBtn");
@@ -108,8 +253,9 @@ if (reviewsBtn) {
     }
 
     const listingId = getQueryParam("listingId");
-    if (!listingId) return;
-    const reviewsCol = collection(db, "listings", listingId, "reviews");
+    const userId = getQueryParam("userId");
+    if (!listingId || !userId) return;
+    const reviewsCol = collection(db, "users", userId, "listings", listingId, "reviews");
     const reviewsSnapshot = await getDocs(reviewsCol);
 
     const container = document.getElementById("listingDescContainer");
@@ -154,8 +300,9 @@ if (descBtn) {
 
     // Restore the description content
     const listingId = getQueryParam("listingId");
-    if (!listingId) return;
-    const docRef = doc(db, "listings", listingId);
+    const userId = getQueryParam("userId");
+    if (!listingId || !userId) return;
+    const docRef = doc(db, "users", userId, "listings", listingId);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) return;
     const data = docSnap.data();
