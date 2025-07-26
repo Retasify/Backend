@@ -231,6 +231,12 @@ function updateListingUI(data) {
     document.getElementById("itemClass").textContent = data.category || "";
   if (document.getElementById("itemSize"))
     document.getElementById("itemSize").textContent = data.size || "";
+  if (document.getElementById("itemLength"))
+    document.getElementById("itemLength").textContent = data.length || "N/A";
+  if (document.getElementById("itemWaist"))
+    document.getElementById("itemWaist").textContent = data.waist || "N/A";
+  if (document.getElementById("itemBust"))
+    document.getElementById("itemBust").textContent = data.bust || "N/A";
   if (document.getElementById("pickupArea"))
     document.getElementById("pickupArea").textContent = data.landmark || "";
   if (document.getElementById("finalPrice"))

@@ -85,7 +85,7 @@ async function displayListings() {
                     reviewCount++;
                 }
             });
-            const avgRating = reviewCount > 0 ? (totalRating / reviewCount).toFixed(1) : "4.9";
+            const avgRating = reviewCount > 0 ? (totalRating / reviewCount).toFixed(1) : "0";
             const ratingCount = reviewCount > 0 ? reviewCount : "0";
 
             return {
