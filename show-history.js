@@ -36,10 +36,8 @@ function renderHistory(entries) {
   let html = "";
   entries.forEach(entry => {
     // Fallbacks for missing data
-    const imgSrc = Array.isArray(entry.itemImage) && entry.itemImage.length > 0
-      ? entry.itemImage[0]
-      : "./images/Placeholder_img.png";
-    const productName = entry.itemName || "Untitled";
+    const imgSrc = entry.listingImage ||"./images/Placeholder_img.png";
+    const productName = entry.listingTitle || "Untitled";
     const productClass = entry.itemClassification || "";
     const productGender = entry.itemGender || "Unspecified";
     const totalPrice = entry.totalPrice ? `Php ${entry.totalPrice}` : "Php 1,200";
@@ -113,9 +111,8 @@ function renderHistory(entries) {
             <div>
               <h3 class="font-semibold text-gray-800">${productName}</h3>
               <div class="flex items-center gap-2">
-                <p class="text-sm text-gray-500">${productClass}</p>
-                <span class="text-xs text-gray-400">|</span>
-                <p class="text-sm text-gray-500">${productGender}</p>
+                
+                
               </div>
             </div>
           </div>

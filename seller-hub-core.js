@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-analytics.js";
-import { getFirestore, doc, getDoc, collection, getDocs, query, where, addDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, getDocs, query, where, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-storage.js";
 // TODO: Add SDKs for Firebase products that you want to use
@@ -75,10 +75,10 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
     
-    // Get the user document ID
-    const userDocId = userSnapshot.docs[0].id;
+    // Get the user document ID and store globally
+    window.userDocId = userSnapshot.docs[0].id;
     const userDoc = userSnapshot.docs[0].data();
-    console.log('Found user document ID:', userDocId);
+    console.log('Found user document ID:', window.userDocId);
     
     // Update user name in header
     const userNameElement = document.getElementById('userName');
@@ -98,6 +98,9 @@ onAuthStateChanged(auth, async (user) => {
     
     // Now access listings subcollection under this document
     const listingsRef = collection(db, "users", userDocId, "listings");
+    
+    // Define inactiveQuery in the correct scope
+    const inactiveQuery = query(listingsRef, where("status", "==", "inactive"));
     
     // Try getting ALL listings first (without status filter)
     const allListings = await getDocs(listingsRef);
@@ -296,7 +299,6 @@ onAuthStateChanged(auth, async (user) => {
             if (inactiveCountDisplay) {
                 // Get inactive listings count
                 try {
-                    const inactiveQuery = query(listingsRef, where("status", "==", "inactive"));
                     const inactiveSnapshot = await getDocs(inactiveQuery);
                     inactiveCountDisplay.textContent = `Total Inactive (${inactiveSnapshot.size})`;
                     inactiveCountDisplay.parentElement.style.display = 'block';
@@ -546,11 +548,119 @@ async function loadActiveOrders() {
   hideElement('activeOrdersTable');
   
   try {
-    // Simulate loading time for demonstration
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const rentals = await fetchAllRentalsForOwner();
+    const activeOrdersTable = document.getElementById('activeOrdersTable');
     
-    // TODO: Replace with actual orders fetching logic
-    console.log('Loading active orders...');
+    if (!activeOrdersTable) {
+      console.error('Active orders table not found');
+      return;
+    }
+
+    if (rentals.length === 0) {
+      activeOrdersTable.innerHTML = `
+        <div class="text-center py-8">
+          <div class="text-gray-400 mb-4">
+            <svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+          </div>
+          <p class="text-gray-500">No rentals found for your listings.</p>
+        </div>
+      `;
+      hideLoader('activeOrdersLoader');
+      showElement('activeOrdersTable');
+      return;
+    }
+
+    // Sort rentals by createdAt (newest first)
+    rentals.sort((a, b) => {
+      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      return dateB - dateA;
+    });
+
+    let html = '';
+    rentals.forEach(rental => {
+      const startDate = formatDate(rental.startDate);
+      const endDate = formatDate(rental.endDate);
+      const createdDate = formatDate(rental.createdAt);
+      const totalPrice = rental.totalPrice ? `₱${rental.totalPrice.toLocaleString()}` : '₱0';
+      
+      let statusClass = '';
+      let statusText = rental.status || 'Pending';
+      
+      switch(statusText.toLowerCase()) {
+        case 'pending':
+          statusClass = 'bg-yellow-100 text-yellow-800';
+          break;
+        case 'confirmed':
+          statusClass = 'bg-blue-100 text-blue-800';
+          break;
+        case 'in-progress':
+          statusClass = 'bg-green-100 text-green-800';
+          break;
+        case 'completed':
+          statusClass = 'bg-gray-100 text-gray-800';
+          break;
+        case 'cancelled':
+          statusClass = 'bg-red-100 text-red-800';
+          break;
+        default:
+          statusClass = 'bg-gray-100 text-gray-800';
+      }
+
+      html += `
+        <div class="bg-white rounded-lg shadow-sm border p-4 mb-4">
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-start space-x-3">
+              ${rental.listingImage ? `<img src="${rental.listingImage}" alt="${rental.listingTitle}" class="w-16 h-16 rounded-md object-cover flex-shrink-0">` : ''}
+              <div>
+                <h4 class="font-semibold text-gray-900">${rental.listingTitle}</h4>
+                <p class="text-sm text-gray-600">Rental ID: ${rental.id}</p>
+              </div>
+            </div>
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
+              ${statusText}
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span class="text-gray-500">Start Date:</span>
+              <p class="font-medium">${startDate}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">End Date:</span>
+              <p class="font-medium">${endDate}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">Total Price:</span>
+              <p class="font-medium">${totalPrice}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">Renter:</span>
+              <p class="font-medium">${rental.fullName || rental.renterName || rental.renterEmail || 'Unknown'}</p>
+            </div>
+          </div>
+          
+          ${rental.notes ? `
+            <div class="mt-3 pt-3 border-t">
+              <span class="text-gray-500 text-sm">Notes:</span>
+              <p class="text-sm text-gray-700">${rental.notes}</p>
+            </div>
+          ` : ''}
+          <div class="mt-3 pt-3 border-t flex justify-end">
+              <button 
+                onclick="markAsPickedUp('${rental.id}', '${rental.ownerUserId}')" 
+                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors">
+                Mark as Picked Up
+              </button>
+            </div>
+        </div>
+      `;
+    });
+
+    activeOrdersTable.innerHTML = html;
     
     hideLoader('activeOrdersLoader');
     showElement('activeOrdersTable');
@@ -765,10 +875,250 @@ window.loadActiveOrders = loadActiveOrders;
 window.loadPendingOrders = loadPendingOrders;
 window.loadCancelledOrders = loadCancelledOrders;
 
+/******************************************************************************
+ * FETCH ALL RENTALS FOR OWNER'S LISTINGS
+ * 
+ * This function fetches all rentals from the rentals subcollection
+ * of all listings that have an ownerUserId matching the logged-in user's UID
+ ******************************************************************************/
+async function fetchAllRentalsForOwner() {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('No authenticated user found');
+      return [];
+    }
+
+    console.log('Fetching all rentals for owner auth UID:', user.uid);
+
+    // Use globally stored user document ID instead of querying again
+    const userDocId = window.userDocId;
+    if (!userDocId) {
+      console.error('User document ID not found in global scope');
+      return [];
+    }
+    console.log('Using globally stored user document ID:', userDocId);
+
+    // Query the rentals subcollection under the user document
+    // Use the document ID instead of the auth UID
+    const rentalsQuery = query(
+      collection(db, "users", userDocId, "rentals"), 
+      where("ownerUserId", "==", userDocId)
+    );
+    
+    const rentalsSnapshot = await getDocs(rentalsQuery);
+    console.log(`Found ${rentalsSnapshot.size} rentals for owner document ID ${userDocId}`);
+
+    const allRentals = [];
+
+    // Process each rental document
+    rentalsSnapshot.forEach(rentalDoc => {
+      const rentalData = rentalDoc.data();
+      console.log('Rental data:', rentalData);
+      console.log('Rental status:', rentalData.status);
+      console.log('Rental ownerUserId:', rentalData.ownerUserId);
+      allRentals.push({
+        id: rentalDoc.id,
+        ...rentalData
+      });
+    });
+
+    console.log(`Total rentals found for owner: ${allRentals.length}`);
+    return allRentals;
+
+  } catch (error) {
+    console.error('Error fetching rentals for owner:', error);
+    return [];
+  }
+}
+
+// Function to display rentals in seller dashboard
+async function displayOwnerRentals() {
+  try {
+    showLoader('rentalsLoader');
+    
+    const rentals = await fetchAllRentalsForOwner();
+    const rentalsContainer = document.getElementById('ownerRentalsContainer');
+    
+    if (!rentalsContainer) {
+      console.error('Rentals container not found');
+      return;
+    }
+
+    if (rentals.length === 0) {
+      rentalsContainer.innerHTML = `
+        <div class="text-center py-8">
+          <p class="text-gray-500">No rentals found for your listings.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Sort rentals by createdAt (newest first)
+    rentals.sort((a, b) => {
+      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+      return dateB - dateA;
+    });
+
+    let html = '';
+    rentals.forEach(rental => {
+      const startDate = formatDate(rental.startDate);
+      const endDate = formatDate(rental.endDate);
+      const createdDate = formatDate(rental.createdAt);
+      const totalPrice = rental.totalPrice ? `₱${rental.totalPrice.toLocaleString()}` : '₱0';
+      
+      let statusClass = '';
+      let statusText = rental.status || 'Pending';
+      
+      switch(statusText.toLowerCase()) {
+        case 'pending':
+          statusClass = 'bg-yellow-100 text-yellow-800';
+          break;
+        case 'confirmed':
+          statusClass = 'bg-blue-100 text-blue-800';
+          break;
+        case 'in-progress':
+          statusClass = 'bg-green-100 text-green-800';
+          break;
+        case 'completed':
+          statusClass = 'bg-gray-100 text-gray-800';
+          break;
+        case 'cancelled':
+          statusClass = 'bg-red-100 text-red-800';
+          break;
+        default:
+          statusClass = 'bg-gray-100 text-gray-800';
+      }
+
+      html += `
+        <div class="bg-white rounded-lg shadow-sm border p-4 mb-4">
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-start space-x-3">
+              ${rental.listingImage ? `<img src="${rental.listingImage}" alt="${rental.listingTitle}" class="w-16 h-16 rounded-md object-cover flex-shrink-0">` : ''}
+              <div>
+                <h4 class="font-semibold text-gray-900">${rental.listingTitle}</h4>
+                <p class="text-sm text-gray-600">Rental ID: ${rental.id}</p>
+              </div>
+            </div>
+            <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
+              ${statusText}
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span class="text-gray-500">Start Date:</span>
+              <p class="font-medium">${startDate}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">End Date:</span>
+              <p class="font-medium">${endDate}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">Total Price:</span>
+              <p class="font-medium">${totalPrice}</p>
+            </div>
+            <div>
+              <span class="text-gray-500">Renter:</span>
+              <p class="font-medium">${rental.fullName || rental.renterName || rental.renterEmail || 'Unknown'}</p>
+            </div>
+          </div>
+          
+          ${rental.notes ? `
+            <div class="mt-3 pt-3 border-t">
+              <span class="text-gray-500 text-sm">Notes:</span>
+              <p class="text-sm text-gray-700">${rental.notes}</p>
+            </div>
+          ` : ''}
+          <div class="mt-3 pt-3 border-t flex justify-end">
+              <button 
+                onclick="markAsPickedUp('${rental.id}', '${rental.ownerUserId}')" 
+                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium transition-colors">
+                Mark as Picked Up
+              </button>
+            </div>
+        </div>
+      `;
+    });
+
+    rentalsContainer.innerHTML = html;
+    
+  } catch (error) {
+    console.error('Error displaying owner rentals:', error);
+  } finally {
+    hideLoader('rentalsLoader');
+  }
+}
+
+// Make functions globally available
+window.fetchAllRentalsForOwner = fetchAllRentalsForOwner;
+window.displayOwnerRentals = displayOwnerRentals;
+
 function formatDate(date) {
-  return date.toLocaleDateString('en-US', { 
+  if (!date) return 'N/A';
+  
+  // Handle Firestore Timestamp
+  if (date && typeof date.toDate === 'function') {
+    return date.toDate().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  }
+  
+  // Handle regular Date or string
+  return new Date(date).toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'short', 
     day: 'numeric' 
   });
 }
+
+// Function to mark rental as picked up
+window.markAsPickedUp = async function(rentalId, ownerUserId) {
+  try {
+    // Get the rental document reference
+    const rentalDocRef = doc(db, "users", ownerUserId, "rentals", rentalId);
+    
+    // Update the rental status to picked up
+    await updateDoc(rentalDocRef, {
+      status: "picked up",
+      updatedAt: new Date()
+    });
+    
+    // Show success message
+    alert('Rental has been marked as picked up successfully');
+    
+    // Refresh the rentals display
+    window.location.reload();
+    
+  } catch (error) {
+    console.error("Error marking rental as picked up:", error);
+    alert('Error marking rental as picked up: ' + error.message);
+  }
+};
+
+// Function to mark rental as returned
+window.markAsReturned = async function(rentalId, ownerUserId) {
+  try {
+    // Get the rental document reference
+    const rentalDocRef = doc(db, "users", ownerUserId, "rentals", rentalId);
+    
+    // Update the rental status to returned
+    await updateDoc(rentalDocRef, {
+      status: "returned",
+      updatedAt: new Date()
+    });
+    
+    // Show success message
+    alert('Rental has been marked as returned successfully');
+    
+    // Refresh the rentals display
+    window.location.reload();
+    
+  } catch (error) {
+    console.error("Error marking rental as returned:", error);
+    alert('Error marking rental as returned: ' + error.message);
+  }
+};

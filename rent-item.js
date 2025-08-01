@@ -193,11 +193,36 @@ class RentalCalculator {
         return;
       }
 
+      // Fetch listing data to get name and images using view-details.js approach
+      let listingName = 'Unnamed Listing';
+      let listingImage = '';
+      
+      try {
+        // Fetch the listing document from the owner's listings subcollection
+        const listingDoc = await getDoc(doc(db, 'users', this.userId, 'listings', this.listingId));
+        
+        if (listingDoc.exists()) {
+          const listingData = listingDoc.data();
+          listingName = listingData.name || listingData.title || 'Unnamed Listing';
+          
+          // Handle both 'images' and 'image' fields as seen in view-details.js
+          const images = Array.isArray(listingData.images) ? listingData.images : 
+                        (Array.isArray(listingData.image) ? listingData.image : []);
+          listingImage = images.length > 0 ? images[0] : '';
+        } else {
+          console.warn('Listing not found:', this.listingId, 'for user:', this.userId);
+        }
+      } catch (error) {
+        console.error('Error fetching listing data:', error);
+      }
+
       const rentalData = {
         ...formData,
         ...rentalDetails,
         ownerUserId: this.userId, // The owner of the listing
         renterUserId: this.loggedInUserId, // The logged-in user
+        listingTitle: listingName,
+        listingImage: listingImage,
         status: 'pending',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
