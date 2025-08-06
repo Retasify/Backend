@@ -25,6 +25,23 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 /******************************************************************************
+ * PAGINATION VARIABLES
+ * 
+ * Global variables for handling pagination across different sections
+ ******************************************************************************/
+
+// Pagination variables for listings
+let currentListingsPage = 1;
+let currentOrdersPage = 1;
+const itemsPerPage = 5; // 5 items per page for seller dashboard
+let allActiveListingsCache = [];
+let allInactiveListingsCache = [];
+let allOrdersCache = [];
+let totalActiveListings = 0;
+let totalInactiveListings = 0;
+let totalOrders = 0;
+
+/******************************************************************************
  * AUTHENTICATION & PERSISTENCE HANDLING
  * 
  * This section handles:
@@ -124,117 +141,33 @@ onAuthStateChanged(auth, async (user) => {
     const activeSnapshot = await getDocs(activeQuery);
     console.log(`Found ${activeSnapshot.size} active listings`);
     
+    // Cache all active listings for pagination
+    allActiveListingsCache = [];
+    activeSnapshot.forEach((doc) => {
+      allActiveListingsCache.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    totalActiveListings = allActiveListingsCache.length;
+    
     // Update active count display
     const activeCountDisplay = document.getElementById('activeCountDisplay');
     if (activeCountDisplay) {
-      activeCountDisplay.textContent = `Total Active (${activeSnapshot.size})`;
-      console.log('Updated active count display with:', activeSnapshot.size);
+      activeCountDisplay.textContent = `Total Active (${totalActiveListings})`;
+      console.log('Updated active count display with:', totalActiveListings);
     }
     
     // Show active count section
     showElement('activeCount');
     
-    // Update pagination info
-    const resultsInfo = document.getElementById('resultsInfo');
-    if (resultsInfo) {
-      resultsInfo.textContent = `Showing ${Math.min(activeSnapshot.size, 10)} of ${activeSnapshot.size} results`;
-      console.log('Updated pagination info');
-    }
-    
     // Hide loader and show table
     hideLoader('activeListingsLoader');
     showElement('listingsTable');
     
-    // Get table body element
-    const tableBody = document.getElementById('activeListings');
-    
-    if (tableBody) {
-      tableBody.innerHTML = '';
-      
-      if (activeSnapshot.size > 0) {
-        // Display active listings
-        activeSnapshot.forEach((doc) => {
-          const listing = doc.data();
-          const row = document.createElement('tr');
-          row.className = 'border-b hover:bg-gray-50';
-          
-          // Format date if available
-          const listingDate = listing.date?.toDate() || new Date();
-          const formattedDate = listingDate.toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          });
-          
-          // Format price if available
-          const formattedPrice = listing.price ? `₱${listing.price.toLocaleString()}` : '₱0';
-          
-          row.innerHTML = `
-            <td class="p-4">
-              <div class="flex items-center gap-4">
-                <div class="w-16 h-16 rounded-lg overflow-hidden">
-                  <img src="${listing.images[0] || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZmlsbD0iI2YwMDAwMCIgZD0iTTEyIDEyIi8+PC9zdmc+'}" alt="Listing" class="w-full h-full object-cover">
-                </div>
-                <div>
-                  <p class="font-semibold text-gray-800">${listing.title || 'No Title'}</p>
-                  ${listing.category ? `<p class="text-sm text-gray-600">${listing.category}</p>` : ''}
-                  ${listing.subcategory ? `<p class="text-sm text-gray-600">${listing.subcategory}</p>` : ''}
-                </div>
-              </div>
-            </td>
-            <td class="p-4 text-gray-600">${formattedDate}</td>
-            <td class="p-4 text-gray-800 font-semibold">${formattedPrice}</td>
-            <td class="p-4">
-              <div class="flex gap-2">
-                <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
-                  Edit
-                </button>
-                <button class="bg-red-100 text-red-600 px-4 py-2 rounded-lg hover:bg-red-200 transition-colors" id="deactivateBtn-${doc.id}" data-listing-id="${doc.id}" data-doc-ref="${JSON.stringify(doc.ref)}">
-                  Deactivate
-                </button>
-              </div>
-            </td>
-          `;
-          
-          tableBody.appendChild(row);
-          
-          // Add deactivation handler for this specific listing
-          const deactivateBtn = document.getElementById(`deactivateBtn-${doc.id}`);
-          if (deactivateBtn) {
-            deactivateBtn.addEventListener('click', async (e) => {
-              try {
-                // Prevent default button behavior
-                e.preventDefault();
-                
-                // Get the listings collection reference
-                const listingsRef = collection(db, "users", userDocId, "listings");
-                
-                // Update the listing status to inactive
-                await updateDoc(listingsRef.doc(e.target.dataset.listingId), {
-                  status: "inactive",
-                  updatedAt: new Date()
-                });
-                
-                // Show success message
-                alert('Listing has been deactivated successfully');
-                
-                // Refresh the listings display
-                window.location.reload();
-              } catch (error) {
-                console.error("Error deactivating listing:", error);
-                // TODO: Show error message to user
-              }
-            });
-          }
-        });
-      } else {
-        // Show message if no active listings found
-        const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="4" class="p-4 text-center text-gray-500">No active listings found</td>';
-        tableBody.appendChild(row);
-      }
-    }
-    
+    // Display first page of active listings
+    displayActiveListings(1);
+
     /**************************************************************************
      * INACTIVE LISTINGS DISPLAY
      * 
@@ -265,16 +198,14 @@ onAuthStateChanged(auth, async (user) => {
             // Show active count
             const activeCountDisplay = document.getElementById('activeCountDisplay');
             if (activeCountDisplay) {
-                activeCountDisplay.textContent = `Total Active (${activeSnapshot.size})`;
+                activeCountDisplay.textContent = `Total Active (${totalActiveListings})`;
                 activeCountDisplay.parentElement.style.display = 'block';
             }
         }
         if (inactiveContent) inactiveContent.classList.add('hidden');
         
-        // Load active listings if needed
-        if (typeof loadActiveListings === 'function') {
-            loadActiveListings();
-        }
+        // Display first page of active listings
+        displayActiveListings(1);
     }
     
     // Function to switch to inactive listings
@@ -296,17 +227,35 @@ onAuthStateChanged(auth, async (user) => {
             inactiveContent.classList.remove('hidden');
             // Show inactive count
             const inactiveCountDisplay = document.getElementById('inactiveCountDisplay');
-            if (inactiveCountDisplay) {
-                // Get inactive listings count
-                try {
-                    const inactiveSnapshot = await getDocs(inactiveQuery);
-                    inactiveCountDisplay.textContent = `Total Inactive (${inactiveSnapshot.size})`;
-                    inactiveCountDisplay.parentElement.style.display = 'block';
-                } catch (error) {
-                    console.error('Error fetching inactive listings count:', error);
-                    inactiveCountDisplay.textContent = 'Error loading inactive count';
-                }
+        if (inactiveContent) inactiveContent.classList.remove('hidden');
+        
+        // Show inactive count and load data
+        const inactiveCountElement = document.getElementById('inactiveCountDisplay');
+        if (inactiveCountElement) {
+            try {
+                const inactiveQuery = query(listingsRef, where("status", "==", "inactive"));
+                const inactiveSnapshot = await getDocs(inactiveQuery);
+                
+                // Cache all inactive listings for pagination
+                allInactiveListingsCache = [];
+                inactiveSnapshot.forEach((doc) => {
+                    allInactiveListingsCache.push({
+                        id: doc.id,
+                        ...doc.data()
+                    });
+                });
+                totalInactiveListings = allInactiveListingsCache.length;
+                
+                inactiveCountElement.textContent = `Total Inactive (${totalInactiveListings})`;
+                inactiveCountElement.parentElement.style.display = 'block';
+                
+                // Display first page of inactive listings
+                displayInactiveListings(1);
+                
+            } catch (error) {
+                inactiveCountElement.textContent = 'Error loading inactive count';
             }
+        }
         }
         
         // Load inactive listings if needed
@@ -329,11 +278,468 @@ onAuthStateChanged(auth, async (user) => {
     window.inactiveQuery = inactiveQuery;
     
   } catch (error) {
-    console.error("Error loading listings:", error);
     hideLoader('activeListingsLoader');
     showElement('listingsTable');
   }
 });
+
+/******************************************************************************
+ * PAGINATION UTILITY FUNCTIONS
+ * 
+ * These functions handle pagination for listings and orders
+ ******************************************************************************/
+
+function updateListingsPagination(section = 'active') {
+    const totalItems = section === 'active' ? totalActiveListings : totalInactiveListings;
+    const currentPage = currentListingsPage;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const paginationContainer = document.querySelector('#listingsPaginationContainer nav');
+    
+    if (!paginationContainer) {
+        return;
+    }
+
+    let paginationHTML = '';
+    
+    // Previous button
+    paginationHTML += `
+        <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors pagination-btn" 
+                data-page="${currentPage - 1}" 
+                data-section="listings"
+                ${currentPage === 1 ? 'disabled' : ''}>
+            <i class="fas fa-chevron-left text-gray-400"></i>
+        </button>
+    `;
+
+    // Page numbers
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    // Adjust startPage if we're near the end
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    // Show first page and ellipsis if needed
+    if (startPage > 1) {
+        paginationHTML += `
+            <button class="w-8 h-8 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors pagination-btn" 
+                    data-page="1" data-section="listings">1</button>
+        `;
+        if (startPage > 2) {
+            paginationHTML += `<span class="text-gray-400">...</span>`;
+        }
+    }
+
+    // Show page numbers
+    for (let i = startPage; i <= endPage; i++) {
+        const isActive = i === currentPage;
+        paginationHTML += `
+            <button class="w-8 h-8 ${isActive ? 'bg-[#F4B840] text-black' : 'hover:bg-gray-100 text-gray-600'} rounded-lg font-semibold transition-colors pagination-btn" 
+                    data-page="${i}" data-section="listings">${i}</button>
+        `;
+    }
+
+    // Show ellipsis and last page if needed
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHTML += `<span class="text-gray-400">...</span>`;
+        }
+        paginationHTML += `
+            <button class="w-8 h-8 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors pagination-btn" 
+                    data-page="${totalPages}" data-section="listings">${totalPages}</button>
+        `;
+    }
+
+    // Next button
+    paginationHTML += `
+        <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors pagination-btn" 
+                data-page="${currentPage + 1}" 
+                data-section="listings"
+                ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+        </button>
+    `;
+
+    paginationContainer.innerHTML = paginationHTML;
+
+    // Add event listeners to pagination buttons
+    document.querySelectorAll('.pagination-btn[data-section="listings"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = parseInt(btn.dataset.page);
+            if (page >= 1 && page <= totalPages && !btn.disabled) {
+                currentListingsPage = page;
+                // Determine which tab is currently active
+                const activeTab = document.getElementById('activeTab');
+                const isActiveTabSelected = activeTab && activeTab.classList.contains('text-[#F4B840]');
+                
+                if (isActiveTabSelected) {
+                    displayActiveListings(page);
+                } else {
+                    displayInactiveListings(page);
+                }
+            }
+        });
+    });
+}
+
+function updateOrdersPagination() {
+    const totalPages = Math.ceil(totalOrders / itemsPerPage);
+    const paginationContainer = document.querySelector('#ordersPaginationContainer nav');
+    
+    if (!paginationContainer) {
+        return;
+    }
+
+    let paginationHTML = '';
+    
+    // Previous button
+    paginationHTML += `
+        <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors pagination-btn" 
+                data-page="${currentOrdersPage - 1}" 
+                data-section="orders"
+                ${currentOrdersPage === 1 ? 'disabled' : ''}>
+            <i class="fas fa-chevron-left text-gray-400"></i>
+        </button>
+    `;
+
+    // Page numbers
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentOrdersPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    // Adjust startPage if we're near the end
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    // Show first page and ellipsis if needed
+    if (startPage > 1) {
+        paginationHTML += `
+            <button class="w-8 h-8 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors pagination-btn" 
+                    data-page="1" data-section="orders">1</button>
+        `;
+        if (startPage > 2) {
+            paginationHTML += `<span class="text-gray-400">...</span>`;
+        }
+    }
+
+    // Show page numbers
+    for (let i = startPage; i <= endPage; i++) {
+        const isActive = i === currentOrdersPage;
+        paginationHTML += `
+            <button class="w-8 h-8 ${isActive ? 'bg-[#F4B840] text-black' : 'hover:bg-gray-100 text-gray-600'} rounded-lg font-semibold transition-colors pagination-btn" 
+                    data-page="${i}" data-section="orders">${i}</button>
+        `;
+    }
+
+    // Show ellipsis and last page if needed
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHTML += `<span class="text-gray-400">...</span>`;
+        }
+        paginationHTML += `
+            <button class="w-8 h-8 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors pagination-btn" 
+                    data-page="${totalPages}" data-section="orders">${totalPages}</button>
+        `;
+    }
+
+    // Next button
+    paginationHTML += `
+        <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors pagination-btn" 
+                data-page="${currentOrdersPage + 1}" 
+                data-section="orders"
+                ${currentOrdersPage === totalPages || totalPages === 0 ? 'disabled' : ''}>
+            <i class="fas fa-chevron-right text-gray-400"></i>
+        </button>
+    `;
+
+    paginationContainer.innerHTML = paginationHTML;
+
+    // Add event listeners to pagination buttons
+    document.querySelectorAll('.pagination-btn[data-section="orders"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = parseInt(btn.dataset.page);
+            if (page >= 1 && page <= totalPages && !btn.disabled) {
+                currentOrdersPage = page;
+                displayOrders(page);
+            }
+        });
+    });
+}
+
+function updateResultsHeader(section, startItem, endItem, total) {
+    let elementId;
+    switch(section) {
+        case 'active':
+            elementId = 'resultsInfo';
+            break;
+        case 'inactive':
+            elementId = 'inactiveResultsInfo';
+            break;
+        case 'orders':
+            elementId = 'ordersResultsInfo';
+            break;
+        default:
+            return;
+    }
+    
+    const resultsHeader = document.getElementById(elementId);
+    if (resultsHeader) {
+        if (total === 0) {
+            resultsHeader.textContent = `Showing 0 results`;
+        } else {
+            resultsHeader.textContent = `Showing ${startItem}-${endItem} of ${total} results`;
+        }
+    }
+}
+
+// Functions to display paginated data
+function displayActiveListings(page = 1) {
+    currentListingsPage = page;
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageListings = allActiveListingsCache.slice(startIndex, endIndex);
+    
+    // Update results header
+    const startItem = startIndex + 1;
+    const endItem = Math.min(endIndex, totalActiveListings);
+    updateResultsHeader('active', startItem, endItem, totalActiveListings);
+    
+    // Render the listings table (reuse existing logic)
+    renderActiveListingsTable(pageListings);
+    
+    // Update pagination
+    updateListingsPagination('active');
+}
+
+function displayInactiveListings(page = 1) {
+    currentListingsPage = page;
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageListings = allInactiveListingsCache.slice(startIndex, endIndex);
+    
+    // Update results header
+    const startItem = startIndex + 1;
+    const endItem = Math.min(endIndex, totalInactiveListings);
+    updateResultsHeader('inactive', startItem, endItem, totalInactiveListings);
+    
+    // Render the listings table (reuse existing logic)
+    renderInactiveListingsTable(pageListings);
+    
+    // Update pagination
+    updateListingsPagination('inactive');
+}
+
+function displayOrders(page = 1) {
+    currentOrdersPage = page;
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageOrders = allOrdersCache.slice(startIndex, endIndex);
+    
+    // Update results header (if you have one for orders)
+    const startItem = startIndex + 1;
+    const endItem = Math.min(endIndex, totalOrders);
+    updateResultsHeader('orders', startItem, endItem, totalOrders);
+    
+    // Render the orders table (reuse existing logic)
+    renderOrdersTable(pageOrders);
+    
+    // Update pagination
+    updateOrdersPagination();
+}
+
+// Functions to render table content
+function renderActiveListingsTable(listings) {
+    const tableBody = document.getElementById('activeListings');
+    if (!tableBody) {
+        return;
+    }
+    
+    // Clear existing content
+    tableBody.innerHTML = '';
+    
+    if (listings.length === 0) {
+        // Show empty state
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="4" class="p-4 text-center text-gray-500">No active listings found</td>';
+        tableBody.appendChild(row);
+        return;
+    }
+    
+    listings.forEach((listing) => {
+        const row = document.createElement('tr');
+        row.className = 'border-b hover:bg-gray-50';
+        
+        // Format data
+        const formattedDate = listing.createdAt ? 
+            (listing.createdAt.toDate ? listing.createdAt.toDate() : new Date(listing.createdAt)).toLocaleDateString() : 
+            'No date';
+        const formattedPrice = listing.price ? `₱${listing.price}` : 'No price';
+        
+        row.innerHTML = `
+            <td class="p-4">
+              <div class="flex items-center gap-4">
+                <div class="w-16 h-16 rounded-lg overflow-hidden">
+                  <img src="${listing.images && listing.images[0] ? listing.images[0] : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZmlsbD0iI2YwMDAwMCIgZD0iTTEyIDEyIi8+PC9zdmc+'}" alt="Listing" class="w-full h-full object-cover">
+                </div>
+                <div>
+                  <p class="font-semibold text-gray-800">${listing.title || 'No Title'}</p>
+                  ${listing.category ? `<p class="text-sm text-gray-600">${listing.category}</p>` : ''}
+                  ${listing.subcategory ? `<p class="text-sm text-gray-600">${listing.subcategory}</p>` : ''}
+                </div>
+              </div>
+            </td>
+            <td class="p-4 text-gray-600">${formattedDate}</td>
+            <td class="p-4 text-gray-800 font-semibold">${formattedPrice}</td>
+            <td class="p-4">
+              <div class="flex gap-2">
+                <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                  Edit
+                </button>
+                <button class="bg-red-100 text-red-600 px-4 py-2 rounded-lg hover:bg-red-200 transition-colors" 
+                        onclick="deactivateListing('${listing.id}')">
+                  Deactivate
+                </button>
+              </div>
+            </td>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+}
+
+function renderInactiveListingsTable(listings) {
+    const tableBody = document.getElementById('inactiveListings');
+    if (!tableBody) {
+        return;
+    }
+    
+    // Clear existing content
+    tableBody.innerHTML = '';
+    
+    if (listings.length === 0) {
+        // Show empty state
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="4" class="p-4 text-center text-gray-500">No inactive listings found</td>';
+        tableBody.appendChild(row);
+        return;
+    }
+    
+    listings.forEach((listing) => {
+        const row = document.createElement('tr');
+        row.className = 'border-b hover:bg-gray-50';
+        
+        // Format data
+        const formattedDate = listing.createdAt ? 
+            (listing.createdAt.toDate ? listing.createdAt.toDate() : new Date(listing.createdAt)).toLocaleDateString() : 
+            'No date';
+        const formattedPrice = listing.price ? `₱${listing.price}` : 'No price';
+        
+        row.innerHTML = `
+            <td class="p-4">
+              <div class="flex items-center gap-4">
+                <div class="w-16 h-16 rounded-lg overflow-hidden">
+                  <img src="${listing.images && listing.images[0] ? listing.images[0] : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZmlsbD0iI2YwMDAwMCIgZD0iTTEyIDEyIi8+PC9zdmc+'}" alt="Listing" class="w-full h-full object-cover">
+                </div>
+                <div>
+                  <p class="font-semibold text-gray-800">${listing.title || 'No Title'}</p>
+                  ${listing.category ? `<p class="text-sm text-gray-600">${listing.category}</p>` : ''}
+                  ${listing.subcategory ? `<p class="text-sm text-gray-600">${listing.subcategory}</p>` : ''}
+                </div>
+              </div>
+            </td>
+            <td class="p-4 text-gray-600">${formattedDate}</td>
+            <td class="p-4 text-gray-800 font-semibold">${formattedPrice}</td>
+            <td class="p-4">
+              <div class="flex gap-2">
+                <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+                  Edit
+                </button>
+                <button class="bg-green-100 text-green-600 px-4 py-2 rounded-lg hover:bg-green-200 transition-colors"
+                        onclick="reactivateListing('${listing.id}')">
+                  Reactivate
+                </button>
+              </div>
+            </td>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+}
+
+function renderOrdersTable(orders) {
+    // Implementation to render orders table - placeholder for now
+    // TODO: Implement based on your orders structure
+}
+
+// Global functions for listing management
+window.deactivateListing = async function(listingId) {
+    try {
+        const user = auth.currentUser;
+        if (!user) {
+            alert('Please log in to manage listings');
+            return;
+        }
+        
+        const userDocId = window.userDocId;
+        if (!userDocId) {
+            alert('User document not found');
+            return;
+        }
+        
+        // Update the listing status to inactive
+        const listingRef = doc(db, "users", userDocId, "listings", listingId);
+        await updateDoc(listingRef, {
+            status: "inactive",
+            updatedAt: new Date()
+        });
+        
+        // Show success message
+        alert('Listing has been deactivated successfully');
+        
+        // Refresh the listings display
+        window.location.reload();
+        
+    } catch (error) {
+        alert('Error deactivating listing: ' + error.message);
+    }
+};
+
+window.reactivateListing = async function(listingId) {
+    try {
+        const user = auth.currentUser;
+        if (!user) {
+            alert('Please log in to manage listings');
+            return;
+        }
+        
+        const userDocId = window.userDocId;
+        if (!userDocId) {
+            alert('User document not found');
+            return;
+        }
+        
+        // Update the listing status to active
+        const listingRef = doc(db, "users", userDocId, "listings", listingId);
+        await updateDoc(listingRef, {
+            status: "active",
+            updatedAt: new Date()
+        });
+        
+        // Show success message
+        alert('Listing has been reactivated successfully');
+        
+        // Refresh the listings display
+        window.location.reload();
+        
+    } catch (error) {
+        alert('Error reactivating listing: ' + error.message);
+    }
+};
 
 /******************************************************************************
  * LOADER UTILITY FUNCTIONS
